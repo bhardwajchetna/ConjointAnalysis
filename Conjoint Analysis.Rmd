@@ -1,0 +1,177 @@
+---
+title: "Assignment-1"
+author: "Chetna Bhardwaj"
+date: "1/24/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+library(Rmisc)
+library(ggplot2)
+library(gridExtra)
+library(xlsx)
+library(rlist)
+```
+
+## Function for Attribute Imortance and Willingness to Pay 
+
+```{r}
+attribute_importance <- function(partworth, price_savings){
+  partworth <- as.numeric(partworth)
+  # Screen Size
+  if(partworth[2]>partworth[3]){
+    atrimp_screen <- partworth[2] - partworth[3]
+    }else{
+      atrimp_screen <- partworth[3] - partworth[2]
+    }
+  # Screen Resolution
+  atrimp_sresolution <- partworth[4] - 0
+  # Brand
+  atrimp_brand <- partworth[5] - 0
+  # Price
+  atrimp_price<- 0 - partworth[6]
+  # Calculating the attribute importance 
+  range <- c(atrimp_screen, atrimp_sresolution, atrimp_brand, atrimp_price)
+  total <- sum(atrimp_screen, atrimp_sresolution, atrimp_brand, atrimp_price)
+  attribute_importance <-  round((range/total)*100,2)
+  
+  # Calculating the willingness to pay
+  Value_1Price_Utililty <- price_savings/atrimp_price
+  WillingnessToPay <- round(partworth[2:5]*Value_1Price_Utililty,2)
+  # Creating a vector for attribute Importance and Willingness To Pay
+  Attr_Imp_WTP <- c(attribute_importance, WillingnessToPay)
+  
+  return(Attr_Imp_WTP)
+}
+```
+
+
+## Function for Conjoint Analysis
+
+```{r}
+conjoint_analysis <- function(Person_data, Design_Matrix, My_Design, Competitor_A, Competitor_B, Costs){
+  model = 
+   lm(Person_data$`Preference Rank` ~ Design_Matrix$`Screen 75 inch` + Design_Matrix$`Screen 85 inch` + 
+        Design_Matrix$`Resolution 4K = 1` + Design_Matrix$`Sony = 1` + Design_Matrix$`Price (low = 0; high =1)`)
+  
+  # Determine Price Savings
+  if(Competitor_A[6]>Competitor_B[6]){
+    price_savings = Competitor_A[6] - Competitor_B[6]
+  }else{
+    price_savings = Competitor_B[6] - Competitor_B[6]
+  }
+  Min_Comp_Price <- min(Competitor_A[6], Competitor_B[6])
+  
+  # Call the Attribute Importance Function
+  member_partworth <- round(as.vector(model$coefficients),2)
+  attr_imp_wtp <- attribute_importance(member_partworth, price_savings)
+  
+  # Net Cost of the Product (My Design)
+  Net_Cost <- sum(My_Design[1:5] * Costs)
+  
+  # Price Vector 
+  Price <- seq(1500, 5000, 100)
+  
+  # Computing Utilities 
+  Util_CompA <- sum(Competitor_A[1:5]*member_partworth[1:5]) + 
+    member_partworth[6] * (Competitor_A[6] - Min_Comp_Price)/ (abs(Competitor_A[6]- Competitor_B[6]))
+  Util_CompB <- sum(Competitor_B[1:5]*member_partworth[1:5]) + 
+    member_partworth[6] * (Competitor_B[6] - Min_Comp_Price)/ (abs(Competitor_A[6]- Competitor_B[6]))
+
+  Util_Member <- sum(My_Design[1:5]*member_partworth[1:5]) + 
+    member_partworth[6] * ((Price - Min_Comp_Price)/ (abs(Competitor_A[6]- Competitor_B[6])))
+
+  Attractiveness <- exp(Util_Member)
+  
+  Share <- Attractiveness/ (Attractiveness + exp(Util_CompA) + exp(Util_CompB))
+  Sales <- Share * Market_Size 
+  Margin <- Price - Net_Cost
+  Profit <- Margin * Sales
+  
+  Max_profit <- max(Profit)
+  Price_Position <- match(Max_profit, Profit)
+  Optimal_Price <- Price[Price_Position]
+  Optimal_Share <- Share[Price_Position]
+  
+  # Storing the Market Share vs. Price Plot
+  data_plot <- data.frame(Price, round(Share,2))
+  colnames(data_plot) <- c("Price", "Share")
+
+  pname <- paste0("Plot-",Person_Count)
+  p <- ggplot(data_plot, aes_string(x = "Price", y = "Share")) + ggtitle(pname) +geom_smooth()
+  Plot_MarketShare[[Person_Count]] <- p
+  
+  # Storing the Profit vs. Price Plot
+  data_plot <- data.frame(Price, Profit)
+  colnames(data_plot) <- c("Price", "Profit")
+
+  p <- ggplot(data_plot, aes_string(x = "Price", y = "Profit")) + ggtitle(pname) +geom_smooth()
+  Plot_Profit[[Person_Count]] <- p
+  
+  #Creating a vector for Partworth, SE, tval 
+  member_lmresults <- c(round(as.vector(model$coefficients),2), round(as.vector(summary(model)$coef[,"Std. Error"]),2), 
+                        round(as.vector(summary(model)$coef[,"t value"]),2), attr_imp_wtp, 
+                        round(Optimal_Price,2), round(Max_profit,2), round(Optimal_Share,2))
+  
+  return(member_lmresults)
+}
+```
+
+
+## Call to Data and computing results 
+
+```{r}
+# Read the xlsx file with rankings 
+Preferences <- read_xlsx("Team_8_Preferences.xlsx", sheet=1)
+Design_Matrix <- Preferences[c(1:24),c(5:9)]
+Team_Designs <- read_xlsx("Team_8_Preferences.xlsx", sheet=2)
+
+# Competitor A Design
+Competitor_A <- c(1, 1, 0, 1, 1, 2500) 
+
+# Competitor A Design
+Competitor_B <- c(1, 0, 1, 1, 0, 2000) 
+
+# Costs
+Costs <- c(1000, 500, 1000, 250, 250)
+
+# Market Size 
+Market_Size <- 100 
+
+# Running Regression for each individual and storing the results in a list
+df_results <- data.frame(matrix(ncol = 0, nrow=29))
+Plot_MarketShare = list()
+Plot_Profit = list()
+Person_Count <- 1
+
+# Call to Conjoint Analysis Function for each member
+for(i in seq(from=1, to=nrow(Preferences), by=24)){
+  j=i+23
+  Member_Preference <- Preferences[c(i:j),4]
+  df_results <- cbind(df_results, conjoint_analysis(Member_Preference, Design_Matrix,
+                          Team_Designs[c(Person_Count),c(2:7)], Competitor_A,Competitor_B, Costs))
+  Person_Count <- Person_Count + 1
+}
+
+# Renaming the columns
+colnames(df_results) <- c("Zhitao", "Devanshi", "Xinyu", "Shijun", "Francesca", "Chetna")
+rownames(df_results) <- c("Intercept", "Screen75", "Screen85", "Resolution", "Brand", "Price", 
+                          "Intercept(SE)", "Screen75(SE)", "Screen85(SE)", "Resolution(SE)", "Brand(SE)", "Price(SE)",
+                          "Intercept(tval)", "Screen75(tval)", "Screen85(tval)", "Resolution(tval)", "Brand(tval)", "Price(tval)", 
+                          "ScreenSize(Attr Imp)","Resolution(Attr Imp)","Brand (Attr Imp)","Price (Attr Imp)", 
+                           "Screen75(WTP)", "Screen85(WTP)", "Resolution 4K(WTP)", "Brand Sony (WTP)", "Optimal Price", 
+                          "Max Profit", "Share")
+
+# Write the results to a file
+write.xlsx2(df_results, file="HW1_Conjoint_Analysis.xlsx", sheetName = "Analysis",
+  col.names = TRUE, row.names = TRUE, append = FALSE)
+
+# Plotting the Market Share vs. Price 
+#Plot_MarketShare
+
+# Plotting the Profit vs. Price
+#Plot_Profi
+
+```
