@@ -15,3 +15,6 @@ Outputs:
 5. Willingness to pay for each non-price attribute level
 6. Optimal price
 7. Maximum profit
+
+
+Team_8_Preferences.xlsx : Contains the rankings collected from a team of 6.
