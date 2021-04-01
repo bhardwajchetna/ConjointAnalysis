@@ -18,3 +18,5 @@ Outputs:
 
 
 Team_8_Preferences.xlsx : Contains the rankings collected from a team of 6.
+
+Bootstrap.R : Using Data Bootstrap, Residual Bootsrap and Monte Carlo Simulation, 95% confidence interval of willingness to pay for the entire team for each of the feature has been computed.
